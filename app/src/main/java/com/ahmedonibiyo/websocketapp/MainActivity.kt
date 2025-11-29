@@ -1,139 +1,134 @@
 package com.ahmedonibiyo.websocketapp
 
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
+import com.ahmedonibiyo.websocketapp.model.AppVisibility
 import com.ahmedonibiyo.websocketapp.model.ConnectionState
-import com.ahmedonibiyo.websocketapp.ui.components.ConnectionStatusCard
-import com.ahmedonibiyo.websocketapp.ui.components.MessageItem
+import com.ahmedonibiyo.websocketapp.model.NotificationHelper
 import com.ahmedonibiyo.websocketapp.model.WebSocketViewModel
 import com.ahmedonibiyo.websocketapp.ui.theme.WebSocketAppTheme
-import kotlinx.coroutines.launch
+
+enum class AppScreen {
+    CHAT,
+    SETTINGS
+}
 
 class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            // 这里可以根据 isGranted 做一些提示（可选）
+            // if (!isGranted) { ... }
+        }
+    private val viewModel: WebSocketViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        NotificationHelper.createNotificationChannel(this)
+        requestPostNotificationPermissionIfNeeded()
+
+        // 如果配置了自动连接，启动时就开服务
+        if (viewModel.autoConnect.value) {
+            startWebSocketService()
+        }
+
         setContent {
-            WebSocketAppTheme {
-                WebSocketApp()
+            val themeMode by viewModel.themeMode
+
+            WebSocketAppTheme(themeMode = themeMode) {
+                WebSocketApp(
+                    viewModel = viewModel,
+                    onStartService = { startWebSocketService() },
+                    onStopService = { stopWebSocketService() }
+                )
             }
         }
     }
+
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.setAppInForeground(true)
+        AppVisibility.isForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.setAppInForeground(false)
+        AppVisibility.isForeground = false
+    }
+
+
+    private fun requestPostNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permission = Manifest.permission.POST_NOTIFICATIONS
+            val hasPermission = ContextCompat.checkSelfPermission(
+                this,
+                permission
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasPermission) {
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun startWebSocketService() {
+        val intent = Intent(this, WebSocketService::class.java).apply {
+            putExtra(WebSocketService.EXTRA_HOST, viewModel.host.value)
+            putExtra(WebSocketService.EXTRA_PORT, viewModel.port.value)
+            putExtra(WebSocketService.EXTRA_USER_NAME, viewModel.userName.value)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun stopWebSocketService() {
+        val intent = Intent(this, WebSocketService::class.java)
+        stopService(intent)
+    }
+
 }
 
 @Composable
-fun WebSocketApp(viewModel: WebSocketViewModel = viewModel()) {
-    var messageText by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
+fun WebSocketApp(
+    viewModel: WebSocketViewModel,
+    onStartService: () -> Unit,
+    onStopService: () -> Unit
+) {
+    var currentScreen by remember { mutableStateOf(AppScreen.CHAT) }
 
-    // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(viewModel.messages.size) {
-        if (viewModel.messages.isNotEmpty()) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(viewModel.messages.size - 1)
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Connection Status
-        ConnectionStatusCard(
-            connectionState = viewModel.connectionState.value,
-            onConnect = { viewModel.connect() },
-            onDisconnect = { viewModel.disconnect() }
+    when (currentScreen) {
+        AppScreen.CHAT -> ChatScreen(
+            viewModel = viewModel,
+            onOpenSettings = { currentScreen = AppScreen.SETTINGS }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Messages List
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(viewModel.messages) { message ->
-                    MessageItem(message = message)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Message Input
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = messageText,
-                onValueChange = { messageText = it },
-                label = { Text("Type a message...") },
-                modifier = Modifier.weight(1f),
-                enabled = viewModel.connectionState.value == ConnectionState.CONNECTED
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Button(
-                onClick = {
-                    viewModel.sendMessage(messageText)
-                    messageText = ""
-                },
-                enabled = viewModel.connectionState.value == ConnectionState.CONNECTED && messageText.isNotBlank()
-            ) {
-                Text("Send")
-            }
-        }
+        AppScreen.SETTINGS -> SettingsScreen(
+            viewModel = viewModel,
+            onBackToChat = { currentScreen = AppScreen.CHAT },
+            onStartService = onStartService,
+            onStopService = onStopService
+        )
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun WebSocketAppPreview() {
-    WebSocketAppTheme {
-        WebSocketApp()
-    }
-}

@@ -27,22 +27,43 @@ import com.ahmedonibiyo.websocketapp.ui.theme.TextGray
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
 @Composable
 fun MessageItem(message: Message) {
     val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     val formattedTime = timeFormat.format(Date(message.timestamp))
 
+    val isReceived = message.isReceived
+
+    // 根据收/发消息选择一套颜色（从 MaterialTheme 取，而不是写死常量）
+    val bubbleColor = if (isReceived) {
+        MaterialTheme.colorScheme.surface   // 接收方：普通气泡，用 surface
+    } else {
+        MaterialTheme.colorScheme.primaryContainer // 自己发：突出一点，用 primaryContainer
+    }
+
+    val senderColor = if (isReceived) {
+        MaterialTheme.colorScheme.primary       // 对方昵称：主色
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer // 自己昵称：反差强一点
+    }
+
+    val timeColor = if (isReceived) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isReceived) Arrangement.Start else Arrangement.End
+        horizontalArrangement = if (isReceived) Arrangement.Start else Arrangement.End
     ) {
         Card(
             modifier = Modifier.widthIn(max = 280.dp),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isReceived) ReceivedMessageBackground else SentMessageBackground
-            )
+                containerColor = bubbleColor
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(
                 modifier = Modifier.padding(12.dp)
@@ -51,7 +72,7 @@ fun MessageItem(message: Message) {
                     text = message.sender,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = if (message.isReceived) ReceivedMessageSender else SentMessageSender
+                    color = senderColor
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -67,7 +88,7 @@ fun MessageItem(message: Message) {
                 Text(
                     text = formattedTime,
                     fontSize = 12.sp,
-                    color = TextGray
+                    color = timeColor
                 )
             }
         }

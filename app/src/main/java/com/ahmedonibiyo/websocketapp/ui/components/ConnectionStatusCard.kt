@@ -29,7 +29,8 @@ import com.ahmedonibiyo.websocketapp.ui.theme.PureWhite
 fun ConnectionStatusCard(
     connectionState: ConnectionState,
     onConnect: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    showButtons: Boolean = true
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -55,23 +56,25 @@ fun ConnectionStatusCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onConnect,
-                    enabled = connectionState != ConnectionState.CONNECTED && connectionState != ConnectionState.CONNECTING,
-                    colors = ButtonDefaults.buttonColors(containerColor = PureWhite)
+            if(showButtons) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Connect", color = PureBlack)
-                }
+                    Button(
+                        onClick = onConnect,
+                        enabled = connectionState != ConnectionState.CONNECTED && connectionState != ConnectionState.CONNECTING,
+                        colors = ButtonDefaults.buttonColors(containerColor = PureWhite)
+                    ) {
+                        Text("Connect", color = PureBlack)
+                    }
 
-                Button(
-                    onClick = onDisconnect,
-                    enabled = connectionState == ConnectionState.CONNECTED,
-                    colors = ButtonDefaults.buttonColors(containerColor = PureWhite)
-                ) {
-                    Text("Disconnect", color = PureBlack)
+                    Button(
+                        onClick = onDisconnect,
+                        enabled = connectionState == ConnectionState.CONNECTED,
+                        colors = ButtonDefaults.buttonColors(containerColor = PureWhite)
+                    ) {
+                        Text("Disconnect", color = PureBlack)
+                    }
                 }
             }
         }
